@@ -25,39 +25,57 @@ wget -qO wqy-zenhei.deb https://mirrors.ustc.edu.cn/debian/pool/main/f/fonts-wqy
 dpkg-deb -x wqy-zenhei.deb .
 find usr/share/fonts/ \( -name "*.ttc" -o -name "*.ttf" \) -exec cp {} "${ROOT_DIR}/layer/fonts/" \;
 
-echo "=== 4. 提取 LibreOffice 运行时真正缺失的 NSS 库 ==="
-cd "${ROOT_DIR}/workspace"
+echo "=== 4. 用 Debian 9 容器提取兼容 NSS 库（精确匹配 GLIBC 2.24）==="
+docker run --rm \
+  -v "${ROOT_DIR}/layer/lib:/output" \
+  debian:stretch \
+  bash -c "
+    # 切换为归档源（stretch 已停止维护）
+    echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    echo 'deb http://archive.debian.org/debian-security stretch/updates main' >> /etc/apt/sources.list
+    apt-get -o Acquire::Check-Valid-Until=false update -qq
 
-# 方法：直接从当前 Ubuntu 系统复制，版本最匹配
-# 先确认系统上 libssl3.so 的实际文件名
-LSS=$(find /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu -name "libssl3.so*" 2>/dev/null | head -n1)
-LNSS=$(find /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu -name "libnss3.so*" 2>/dev/null | head -n1)
-LNSPR=$(find /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu -name "libnspr4.so*" 2>/dev/null | head -n1)
-LNSSUTIL=$(find /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu -name "libnssutil3.so*" 2>/dev/null | head -n1)
-LSMIME=$(find /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu -name "libsmime3.so*" 2>/dev/null | head -n1)
-LSSL=$(find /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu -name "libssl.so*" 2>/dev/null | head -n1)
-LCRYPTO=$(find /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu -name "libcrypto.so*" 2>/dev/null | head -n1)
-LPLC=$(find /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu -name "libplc4.so*" 2>/dev/null | head -n1)
-LPLDS=$(find /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu -name "libplds4.so*" 2>/dev/null | head -n1)
+    # 安装 LibreOffice 7.4 所需的 NSS 相关库
+    apt-get install -y --no-install-recommends \
+      libnss3 \
+      libnspr4 \
+      libssl1.0.2 \
+      libglib2.0-0 2>/dev/null
 
-LAYER_LIB="${ROOT_DIR}/layer/lib"
+    # 复制所有相关 .so 文件（-L 跟随软链接复制实际文件）
+    find /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu \
+      \( -name 'libssl3.so*' \
+      -o -name 'libnss3.so*' \
+      -o -name 'libnssutil3.so*' \
+      -o -name 'libnspr4.so*' \
+      -o -name 'libsmime3.so*' \
+      -o -name 'libplc4.so*' \
+      -o -name 'libplds4.so*' \
+      -o -name 'libssl.so*' \
+      -o -name 'libssl1.0.so*' \
+      -o -name 'libcrypto.so*' \
+      \) -exec cp -L {} /output/ \; 2>/dev/null || true
 
-for lib in "$LSS" "$LNSS" "$LNSPR" "$LNSSUTIL" "$LSMIME" "$LSSL" "$LCRYPTO" "$LPLC" "$LPLDS"; do
-    if [ -n "$lib" ] && [ -e "$lib" ]; then
-        cp -L "$lib" "$LAYER_LIB/"   # -L 参数：如果是软链接则复制实际文件
-        echo "已复制: $lib"
-    fi
-done
+    # 建立 soffice.bin 动态链接器查找用的标准名软链
+    cd /output
+    # libssl3.so（NSS 的 SSL 库，不是 OpenSSL）
+    REAL=\$(ls libnss3.so* 2>/dev/null | head -1)
+    [ -n \"\$REAL\" ] && ln -sf \"\$REAL\" libnss3.so && echo \"软链: libnss3.so -> \$REAL\"
 
-# 为 libssl3.so 建立无版本号软链（soffice.bin dlopen 时用的是这个名字）
-cd "$LAYER_LIB"
-REAL_SSL3=$(ls libssl3.so* 2>/dev/null | grep -v '^libssl3.so$' | head -n1)
-if [ -n "$REAL_SSL3" ]; then
-    ln -sf "$REAL_SSL3" libssl3.so
-    echo "软链接: libssl3.so -> $REAL_SSL3"
-elif [ -f "libssl3.so" ]; then
-    echo "libssl3.so 已存在（直接文件）"
-fi
+    # libssl3.so 在 Debian 9 里实际叫 libssl3.so（由 libnss3 包提供）
+    REAL=\$(ls libssl3.so* 2>/dev/null | grep -v '^libssl3.so$' | head -1)
+    [ -n \"\$REAL\" ] && ln -sf \"\$REAL\" libssl3.so && echo \"软链: libssl3.so -> \$REAL\"
+    # 如果 libssl3.so 就是实际文件名则跳过
+
+    REAL=\$(ls libnspr4.so* 2>/dev/null | grep -v '^libnspr4.so$' | head -1)
+    [ -n \"\$REAL\" ] && ln -sf \"\$REAL\" libnspr4.so && echo \"软链: libnspr4.so -> \$REAL\"
+
+    REAL=\$(ls libnssutil3.so* 2>/dev/null | grep -v '^libnssutil3.so$' | head -1)
+    [ -n \"\$REAL\" ] && ln -sf \"\$REAL\" libnssutil3.so && echo \"软链: libnssutil3.so -> \$REAL\"
+
+    echo '--- 提取完成，库文件列表 ---'
+    ls -la /output
+  "
 
 echo "=== 5. 精简体积 ==="
 cd "${ROOT_DIR}/layer/libreoffice7.4"
