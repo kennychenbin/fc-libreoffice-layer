@@ -25,24 +25,18 @@ wget -qO wqy-zenhei.deb https://mirrors.ustc.edu.cn/debian/pool/main/f/fonts-wqy
 dpkg-deb -x wqy-zenhei.deb .
 find usr/share/fonts/ \( -name "*.ttc" -o -name "*.ttf" \) -exec cp {} "${ROOT_DIR}/layer/fonts/" \;
 
-echo "=== 4. 用 Debian 9 容器提取兼容 NSS 库（精确匹配 GLIBC 2.24）==="
+echo "=== 4. 用 Debian 10 容器提取 NSS 3.42 库 ==="
 docker run --rm \
   -v "${ROOT_DIR}/layer/lib:/output" \
-  debian:stretch \
+  debian:buster \
   bash -c "
-    # 切换为归档源（stretch 已停止维护）
-    echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
-    echo 'deb http://archive.debian.org/debian-security stretch/updates main' >> /etc/apt/sources.list
-    apt-get -o Acquire::Check-Valid-Until=false update -qq
-
-    # 安装 LibreOffice 7.4 所需的 NSS 相关库
+    apt-get update -qq
     apt-get install -y --no-install-recommends \
       libnss3 \
       libnspr4 \
-      libssl1.0.2 \
-      libglib2.0-0 2>/dev/null
+      libssl1.1 2>/dev/null
 
-    # 复制所有相关 .so 文件（-L 跟随软链接复制实际文件）
+    # 复制所有相关库（-L 跟随软链接复制实际文件）
     find /usr/lib/x86_64-linux-gnu /lib/x86_64-linux-gnu \
       \( -name 'libssl3.so*' \
       -o -name 'libnss3.so*' \
@@ -52,28 +46,30 @@ docker run --rm \
       -o -name 'libplc4.so*' \
       -o -name 'libplds4.so*' \
       -o -name 'libssl.so*' \
-      -o -name 'libssl1.0.so*' \
       -o -name 'libcrypto.so*' \
       \) -exec cp -L {} /output/ \; 2>/dev/null || true
 
-    # 建立 soffice.bin 动态链接器查找用的标准名软链
+    # 建立标准名软链
     cd /output
-    # libssl3.so（NSS 的 SSL 库，不是 OpenSSL）
-    REAL=\$(ls libnss3.so* 2>/dev/null | head -1)
-    [ -n \"\$REAL\" ] && ln -sf \"\$REAL\" libnss3.so && echo \"软链: libnss3.so -> \$REAL\"
+    for SONAME in libnss3.so libnssutil3.so libnspr4.so libsmime3.so libplc4.so libplds4.so; do
+      REAL=\$(ls \${SONAME}.* 2>/dev/null | head -1)
+      if [ -n \"\$REAL\" ] && [ ! -f \"\$SONAME\" ]; then
+        ln -sf \"\$REAL\" \"\$SONAME\"
+        echo \"软链: \$SONAME -> \$REAL\"
+      fi
+    done
 
-    # libssl3.so 在 Debian 9 里实际叫 libssl3.so（由 libnss3 包提供）
-    REAL=\$(ls libssl3.so* 2>/dev/null | grep -v '^libssl3.so$' | head -1)
-    [ -n \"\$REAL\" ] && ln -sf \"\$REAL\" libssl3.so && echo \"软链: libssl3.so -> \$REAL\"
-    # 如果 libssl3.so 就是实际文件名则跳过
+    # libssl3.so 由 libnss3 包提供（NSS 体系，非 OpenSSL）
+    if [ ! -f libssl3.so ]; then
+      REAL=\$(ls libnss3.so.* 2>/dev/null | head -1)
+      [ -n \"\$REAL\" ] && ln -sf \"\$REAL\" libssl3.so && echo \"软链: libssl3.so -> \$REAL\"
+    fi
 
-    REAL=\$(ls libnspr4.so* 2>/dev/null | grep -v '^libnspr4.so$' | head -1)
-    [ -n \"\$REAL\" ] && ln -sf \"\$REAL\" libnspr4.so && echo \"软链: libnspr4.so -> \$REAL\"
+    # 验证 NSS 符号版本（日志里应看到 NSS_3.34 以上）
+    echo '--- NSS 符号版本验证 ---'
+    objdump -p /output/libnss3.so | grep 'NSS_3\.' || true
 
-    REAL=\$(ls libnssutil3.so* 2>/dev/null | grep -v '^libnssutil3.so$' | head -1)
-    [ -n \"\$REAL\" ] && ln -sf \"\$REAL\" libnssutil3.so && echo \"软链: libnssutil3.so -> \$REAL\"
-
-    echo '--- 提取完成，库文件列表 ---'
+    echo '--- 最终库文件列表 ---'
     ls -la /output
   "
 
