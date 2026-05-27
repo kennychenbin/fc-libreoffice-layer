@@ -9,7 +9,7 @@ echo "=== 1. 创建工作目录 ==="
 mkdir -p "${ROOT_DIR}/workspace"
 mkdir -p "${ROOT_DIR}/layer/libreoffice7.4"
 mkdir -p "${ROOT_DIR}/layer/fonts"
-mkdir -p "${ROOT_DIR}/layer/lib"  # 👈 新增一个系统库存放目录
+mkdir -p "${ROOT_DIR}/layer/lib"
 
 echo "=== 2. 下载并解压 LibreOffice ==="
 cd "${ROOT_DIR}/workspace"
@@ -22,19 +22,23 @@ cp -r opt/libreoffice7.4/* "${ROOT_DIR}/layer/libreoffice7.4/"
 
 echo "=== 3. 下载中文字体 ==="
 cd "${ROOT_DIR}/workspace"
-wget -qO wqy-zenhei.deb http://ftp.de.debian.org/debian/pool/main/f/fonts-wqy-zenhei/fonts-wqy-zenhei_0.9.45-8_all.deb
+# 换成中科大稳定镜像源，下载开源中文字体
+wget -qO wqy-zenhei.deb https://mirrors.ustc.edu.cn/debian/pool/main/f/fonts-wqy-zenhei/fonts-wqy-zenhei_0.9.45-8_all.deb
 dpkg-deb -x wqy-zenhei.deb .
 find usr/share/fonts/ -name "*.ttc" -o -name "*.ttf" -exec cp {} "${ROOT_DIR}/layer/fonts/" \;
 
-echo "=== 4. 【核心升级】在线抓取缺失的 libssl3 和相关系统依赖 ==="
+echo "=== 4. 【核心升级】利用系统 apt 下载并提取 libssl3 和 libnss3 ==="
 cd "${ROOT_DIR}/workspace"
-# 下载 Debian 环境下的 libssl3 和 libnss3 依赖包
-wget -qO libssl3.deb http://ftp.de.debian.org/debian/pool/main/o/openssl/libssl3_3.0.15-1~deb12u1_amd64.deb || wget -qO libssl3.deb http://archive.debian.org/debian/pool/main/o/openssl/libssl3_3.0.11-1~deb12u1_amd64.deb
-wget -qO libnss3.deb http://ftp.de.debian.org/debian/pool/main/n/nss/libnss3_3.87.1-1+deb12u1_amd64.deb
 
-# 解压并提取里面的 .so 文件到层的 lib 目录
-dpkg-deb -x libssl3.deb .
-dpkg-deb -x libnss3.deb .
+# 关键改动：利用 Ubuntu 系统自带的 apt-get 命令直接下载最新安全的依赖包
+sudo apt-get update && sudo apt-get download -y libssl3 libnss3
+
+# 解压刚刚下载下来的系统 deb 包
+for sdeb in *.deb; do
+    dpkg-deb -x "$sdeb" .
+done
+
+# 将提取出来的 .so 动态链接库全部复制到层的 lib 目录中
 find usr/lib/ -name "*.so*" -exec cp -d {} "${ROOT_DIR}/layer/lib/" \;
 
 echo "=== 5. 精简体积 ==="
@@ -44,6 +48,6 @@ cd program && rm -rf *.rc *.desktop
 
 echo "=== 6. 正确打包 ==="
 cd "${ROOT_DIR}/layer"
-# 💡 注意：这次把 libreoffice7.4、fonts 和 lib 一起打包
+# 将编译好的二进制、中文字体、系统动态库一起打包
 zip -r9 "${ROOT_DIR}/libreoffice_layer.zip" libreoffice7.4 fonts lib
-echo "=== 成功完成 ==="
+echo "=== 成功完成！ ==="
