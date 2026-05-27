@@ -1,0 +1,23 @@
+name: Build LibreOffice Layer
+
+on:
+  workflow_dispatch: # 允许你手动点击按钮触发构建
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Run Build Script
+      run: |
+        chmod +x build.sh
+        ./build.sh
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: libreoffice-layer
+        path: libreoffice_layer.zip
