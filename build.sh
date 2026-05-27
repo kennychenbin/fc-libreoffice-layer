@@ -2,8 +2,8 @@
 set -e
 
 LIBREOFFICE_VERSION="7.4.7.2"
-# 换成清华大学镜像源，防止海外网络超时
-DOWNLOAD_URL="https://mirrors.tuna.tsinghua.edu.cn/libreoffice/libreoffice/stable/${LIBREOFFICE_VERSION}/deb/x86_64/LibreOffice_${LIBREOFFICE_VERSION}_Linux_x86-64_deb.tar.gz"
+# 修正为官方历史存档（Archive）直链，确保 100% 存在
+DOWNLOAD_URL="https://downloadarchive.documentfoundation.org/libreoffice/old/${LIBREOFFICE_VERSION}/deb/x86_64/LibreOffice_${LIBREOFFICE_VERSION}_Linux_x86-64_deb.tar.gz"
 
 echo "=== 1. 创建工作目录 ==="
 mkdir -p workspace
