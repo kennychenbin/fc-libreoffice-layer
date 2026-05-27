@@ -22,23 +22,24 @@ cp -r opt/libreoffice7.4/* "${ROOT_DIR}/layer/libreoffice7.4/"
 
 echo "=== 3. 下载中文字体 ==="
 cd "${ROOT_DIR}/workspace"
-# 使用中科大稳定镜像源下载开源中文字体
 wget -qO wqy-zenhei.deb https://mirrors.ustc.edu.cn/debian/pool/main/f/fonts-wqy-zenhei/fonts-wqy-zenhei_0.9.45-8_all.deb
 dpkg-deb -x wqy-zenhei.deb .
 find usr/share/fonts/ -name "*.ttc" -o -name "*.ttf" -exec cp {} "${ROOT_DIR}/layer/fonts/" \;
 
-echo "=== 4. 【核心升级】通过稳定快照源下载固定的 libssl3 和 libnss3 ==="
+echo "=== 4. 【核心升级】在线下载所有缺少的系统基础库 (包含 libssl3, libnss3, libnspr4) ==="
 cd "${ROOT_DIR}/workspace"
 
-# 绝杀：直接下载 Debian 12 稳定版的 libssl3 和 libnss3 的官方固定基础包
+# 引入 libnspr4 解决缺失 libplds4.so 的问题
 wget -qO libssl3.deb https://snapshot.debian.org/archive/debian/20231001T000000Z/pool/main/o/openssl/libssl3_3.0.11-1~deb12u1_amd64.deb
 wget -qO libnss3.deb https://snapshot.debian.org/archive/debian/20231001T000000Z/pool/main/n/nss/libnss3_3.87.1-1_amd64.deb
+wget -qO libnspr4.deb https://snapshot.debian.org/archive/debian/20231001T000000Z/pool/main/n/nspr/libnspr4_4.35-1_amd64.deb
 
-# 解压提取其中的 .so 动态链接库
+# 批量解压提取
 dpkg-deb -x libssl3.deb .
 dpkg-deb -x libnss3.deb .
+dpkg-deb -x libnspr4.deb .
 
-# 兼容有些环境可能需要 libssl.so.3 软链接的情况，直接全部捞出
+# 把所有提取出的 .so 库全部捞到层的 lib 目录中
 find usr/lib/ -name "*.so*" -exec cp -d {} "${ROOT_DIR}/layer/lib/" \;
 
 echo "=== 5. 精简体积 ==="
